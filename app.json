@@ -7,18 +7,13 @@
   ],
   "repository": "https://github.com/Courtney250/TRUTH-MD",
   "stack": "container",
-  "scripts": {
-    "start": "node index.js"
-  },
   "env": {
     "SESSION_ID": {
       "description": "Your WhatsApp session ID (must start with TRUTH-MD:~)",
-      "value": "",
-      "required": true
+      "required": false
     },
     "OWNER_NUMBER": {
       "description": "Your WhatsApp number (e.g. 254101150748)",
-      "value": "",
       "required": false
     }
   },
