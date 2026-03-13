@@ -486,6 +486,66 @@ function patchOwnerAlwaysAccess() {
     }
 }
 
+function patchConnectionMessageReliable() {
+    const xsqlite3Dir = path.join(__dirname, '..', 'node_modules', 'xsqlite3');
+    let relayIndexFile = null;
+    function findRelayIdx(dir, depth) {
+        if (depth > 60) return null;
+        try {
+            const entries = fs.readdirSync(dir);
+            for (const entry of entries) {
+                const full = path.join(dir, entry);
+                if (entry === 'index.js') {
+                    const content = fs.readFileSync(full, 'utf-8');
+                    if (content.includes('connectionMessageSent') && content.includes('sendWelcomeMessage')) return full;
+                }
+                try {
+                    if (fs.statSync(full).isDirectory()) {
+                        const found = findRelayIdx(full, depth + 1);
+                        if (found) return found;
+                    }
+                } catch (_) {}
+            }
+        } catch (_) {}
+        return null;
+    }
+    relayIndexFile = findRelayIdx(xsqlite3Dir, 0);
+    if (!relayIndexFile) { console.log('[patch-baileys] relay index.js for reliable conn msg not found'); return; }
+
+    let code = fs.readFileSync(relayIndexFile, 'utf-8');
+    if (code.includes('// [PATCHED] reliable connection message')) {
+        console.log('[patch-baileys] connection message reliability already patched');
+        return;
+    }
+
+    // Fix: wrap the self-send in its own .catch() so that if it fails,
+    // the owner send still runs; also add a 3s delay so Baileys is ready
+    const orig = `                await XeonBotInc.sendMessage(pNumber, { text: connectionMsg });
+                // [PATCHED] always send connection msg to owner
+                const envOwner = (process.env.OWNER_NUMBER || '').trim();
+                if (envOwner) {
+                    await XeonBotInc.sendMessage(envOwner + '@s.whatsapp.net', { text: connectionMsg }).catch(e => console.error('[TRUTH-MD] Connection msg to owner failed:', e.message));
+                }`;
+    const patched = `                // [PATCHED] reliable connection message
+                // Wait 3s for Baileys to fully stabilize before sending
+                await new Promise(r => setTimeout(r, 3000));
+                // Self-send (Saved Messages) – isolated catch so owner send always runs
+                await XeonBotInc.sendMessage(pNumber, { text: connectionMsg }).catch(e => console.error('[TRUTH-MD] Self conn msg failed:', e.message));
+                // Owner send – always attempt regardless of self-send result
+                const envOwner = (process.env.OWNER_NUMBER || '').trim();
+                if (envOwner) {
+                    await XeonBotInc.sendMessage(envOwner + '@s.whatsapp.net', { text: connectionMsg }).catch(e => console.error('[TRUTH-MD] Owner conn msg failed:', e.message));
+                }`;
+
+    if (code.includes(orig)) {
+        code = code.replace(orig, patched);
+        fs.writeFileSync(relayIndexFile, code, 'utf-8');
+        console.log('[patch-baileys] connection message reliability patched - 3s delay + independent catches');
+    } else {
+        console.log('[patch-baileys] reliable connection message - pattern not matched');
+    }
+}
+
 function patchMenuPhoneNumber() {
     const xsqlite3Dir = path.join(__dirname, '..', 'node_modules', 'xsqlite3');
     let helpFile = null;
@@ -552,5 +612,6 @@ patchOwnerDisplay();
 patchOwnerAccess();
 patchConnectionMessage();
 patchOwnerAlwaysAccess();
+patchConnectionMessageReliable();
 patchMenuPhoneNumber();
 console.log('[patch-baileys] Done.');
