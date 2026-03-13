@@ -3,6 +3,9 @@ const OWNER_NUMBER = process.env.OWNER_NUMBER;
 
 console.log('[TRUTH-MD] Preload running. SESSION_ID present:', !!SESSION_ID, '| OWNER_NUMBER present:', !!OWNER_NUMBER);
 
+// Global error store — reprinted right before exit so it's always visible at the bottom
+global.__truthmd_last_error = null;
+
 // Patch Module._load to intercept every require() call and log failures
 const Module = require('module');
 const _origModuleLoad = Module._load;
@@ -10,7 +13,9 @@ Module._load = function(request, parent, isMain) {
   try {
     return _origModuleLoad.call(this, request, parent, isMain);
   } catch(e) {
-    console.error('[TRUTH-MD] require("' + request + '") FAILED:', e.message);
+    const msg = '[TRUTH-MD] require("' + request + '") FAILED: ' + e.message;
+    global.__truthmd_last_error = msg;
+    console.error(msg);
     throw e;
   }
 };
@@ -50,10 +55,12 @@ function onUnhandledRejection(reason) {
   _origExit(1);
 }
 function onSIGTERM() {
-  console.error('[TRUTH-MD] SIGTERM received — bot was killed (R14/R15 memory limit or self-kill)');
+  console.error('[TRUTH-MD] SIGTERM received — bot was killed (R14/R15 memory or self-kill)');
+  if (global.__truthmd_last_error) console.error('[TRUTH-MD] LAST ERROR WAS:', global.__truthmd_last_error);
   _origExit(143);
 }
 function onExit(code) {
+  if (global.__truthmd_last_error) console.error('[TRUTH-MD] LAST ERROR WAS:', global.__truthmd_last_error);
   console.log('[TRUTH-MD] Process exit event, code:', code);
 }
 

@@ -23,4 +23,4 @@ EXPOSE 3000 5000
 
 ENV NODE_ENV=production
 
-CMD ["sh", "-c", "echo '=== TRUTH-MD BOT STARTING ===' && node --require ./preload.cjs --max-old-space-size=512 --optimize-for-size index.js"]
+CMD ["node", "--require", "./preload.cjs", "--max-old-space-size=512", "--optimize-for-size", "index.js"]
