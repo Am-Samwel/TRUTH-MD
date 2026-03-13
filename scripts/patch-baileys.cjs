@@ -218,6 +218,54 @@ function findRelayFile(filename) {
     return walk(xsqlite3Dir, 0);
 }
 
+function patchCommandSpeed() {
+    const mainFile = findRelayFile('main.js');
+    if (!mainFile) { console.log('[patch-baileys] main.js not found in relay'); return; }
+
+    let code = fs.readFileSync(mainFile, 'utf-8');
+
+    if (code.includes('// [PATCHED] pre-command delay removed')) {
+        console.log('[patch-baileys] main.js command speed already patched');
+        return;
+    }
+
+    let patched = false;
+
+    // Remove the 1000-1800ms pre-command typing wait
+    const preDelay = `        // For DMs: show typing indicator BEFORE command executes so it feels natural
+        if (!isGroup && isAutotypingEnabled()) {
+            try {
+                await sock.sendPresenceUpdate('composing', chatId);
+                await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 800));
+            } catch (_) {}
+        }`;
+    const preDelayPatched = `        // [PATCHED] pre-command delay removed — respond instantly
+        if (!isGroup && isAutotypingEnabled()) {
+            try { await sock.sendPresenceUpdate('composing', chatId); } catch (_) {}
+        }`;
+    if (code.includes(preDelay)) {
+        code = code.replace(preDelay, preDelayPatched);
+        patched = true;
+    }
+
+    // Remove post-command typing/recording status calls
+    const postDelay = `            // Command was executed, now show typing/recording status after command execution
+            await showTypingAfterCommand(sock, chatId);
+            showRecordingAfterCommand(sock, chatId).catch(() => {});`;
+    const postDelayPatched = `            // [PATCHED] post-command typing/recording removed for speed`;
+    if (code.includes(postDelay)) {
+        code = code.replace(postDelay, postDelayPatched);
+        patched = true;
+    }
+
+    if (patched) {
+        fs.writeFileSync(mainFile, code, 'utf-8');
+        console.log('[patch-baileys] main.js patched - command response delays removed');
+    } else {
+        console.log('[patch-baileys] main.js - delay patterns not matched');
+    }
+}
+
 function patchOwnerDisplay() {
     const setownerFile = findRelayFile('setowner.js');
     const helpFile = findRelayFile('help.js');
@@ -270,5 +318,6 @@ patchMessagesRecv();
 patchSessionCipher();
 patchSendDiagnostics();
 patchRelaySendDiagnostics();
+patchCommandSpeed();
 patchOwnerDisplay();
 console.log('[patch-baileys] Done.');
