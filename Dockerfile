@@ -1,31 +1,22 @@
 FROM node:20
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg imagemagick webp git python3 make g++ procps && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg imagemagick webp git python3 make g++ procps \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY package*.json ./
+# Clone private bot repo
+ARG GITHUB_PAT
+RUN git clone https://${GITHUB_PAT}@github.com/mzeeemzimanjejeje/Maintaining.git .
 
-# Step 1: Install all deps WITHOUT scripts (prevents libsignal native build failure)
+# Install dependencies
 RUN npm install --legacy-peer-deps --ignore-scripts
-
-# Step 2: Install node-gyp globally then rebuild better-sqlite3 native binary
 RUN npm install -g node-gyp
-RUN npm rebuild better-sqlite3 && \
-    echo "=== better-sqlite3 binary OK ===" && \
-    ls -la /app/node_modules/better-sqlite3/build/Release/better_sqlite3.node
-
-# Step 3: Install optional modules that ws and node-fetch try to load
+RUN npm rebuild better-sqlite3
 RUN npm install bufferutil encoding --legacy-peer-deps --ignore-scripts || true
-
-# Step 4: Remove sharp installed without scripts, then reinstall so the prebuilt binary downloads
 RUN npm uninstall sharp --legacy-peer-deps && \
     SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm install sharp@0.32.6 --legacy-peer-deps
-
-COPY . .
-
-# Step 5: Apply patches
-RUN node scripts/patch-baileys.cjs
 
 EXPOSE 3000 5000
 
