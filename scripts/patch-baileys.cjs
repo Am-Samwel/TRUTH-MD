@@ -600,6 +600,97 @@ function patchMenuPhoneNumber() {
     }
 }
 
+function patchOsslDecryptError() {
+    const xsqlite3Dir = path.join(__dirname, '..', 'node_modules', 'xsqlite3');
+    let relayIndexFile = null;
+    function findRelayIdx(dir, depth) {
+        if (depth > 60) return null;
+        try {
+            const entries = fs.readdirSync(dir);
+            for (const entry of entries) {
+                const full = path.join(dir, entry);
+                if (entry === 'index.js') {
+                    const content = fs.readFileSync(full, 'utf-8');
+                    if (content.includes('connectionMessageSent') && content.includes('handleMessages error')) return full;
+                }
+                try {
+                    if (fs.statSync(full).isDirectory()) {
+                        const found = findRelayIdx(full, depth + 1);
+                        if (found) return found;
+                    }
+                } catch (_) {}
+            }
+        } catch (_) {}
+        return null;
+    }
+    relayIndexFile = findRelayIdx(xsqlite3Dir, 0);
+    if (!relayIndexFile) { console.log('[patch-baileys] relay index.js for OSSL patch not found'); return; }
+
+    let code = fs.readFileSync(relayIndexFile, 'utf-8');
+    if (code.includes('// [PATCHED] OSSL decrypt recovery')) {
+        console.log('[patch-baileys] OSSL decrypt error handler already patched');
+        return;
+    }
+
+    // 1. Patch the messages.upsert error handler to handle ERR_OSSL_BAD_DECRYPT gracefully
+    const orig1 = `                        Promise.race([handler, timeout]).catch(e => {
+                            console.error(chalk.red(\`[ERROR] handleMessages error:\`), e);
+                            log(e.message, 'red', true);
+                        });`;
+    const patched1 = `                        Promise.race([handler, timeout]).catch(e => {
+                            // [PATCHED] OSSL decrypt recovery
+                            if (e && (e.code === 'ERR_OSSL_BAD_DECRYPT' || (e.message && e.message.includes('bad decrypt')))) {
+                                // Signal session decrypt failure - skip this message silently, session will self-heal
+                                console.error('[TRUTH-MD] Signal decrypt error (skipping message) - consider regenerating SESSION_ID if frequent');
+                                return;
+                            }
+                            if (e && e.message && e.message.includes('timed out')) {
+                                console.error(chalk.yellow('[WARN] handleMessages timed out'));
+                                return;
+                            }
+                            console.error(chalk.red(\`[ERROR] handleMessages error:\`), e.message || e);
+                        });`;
+
+    // 2. Patch downloadSessionData to validate creds.json after writing
+    const orig2 = `            const base64Data = global.SESSION_ID.includes("TRUTH-MD:~") ? global.SESSION_ID.split("TRUTH-MD:~")[1] : global.SESSION_ID;
+            const sessionData = Buffer.from(base64Data, 'base64');
+            await fs.promises.writeFile(credsPath, sessionData);
+            // Save the hash so next restart knows this SESSION_ID was already applied
+            fs.writeFileSync(sessionIdHashFile, currentHash);
+            console.log(chalk.green('Session restored from Base64'));`;
+    const patched2 = `            const base64Data = global.SESSION_ID.includes("TRUTH-MD:~") ? global.SESSION_ID.split("TRUTH-MD:~")[1] : global.SESSION_ID;
+            const sessionData = Buffer.from(base64Data, 'base64');
+            // [PATCHED] OSSL decrypt recovery - validate creds JSON before writing
+            try { JSON.parse(sessionData.toString()); } catch (_) {
+                console.error('[TRUTH-MD] SESSION_ID decodes to invalid JSON - clearing it. Bot will use OWNER_NUMBER to pair.');
+                try { fs.unlinkSync(credsPath); } catch (_2) {}
+                return;
+            }
+            await fs.promises.writeFile(credsPath, sessionData);
+            // Save the hash so next restart knows this SESSION_ID was already applied
+            fs.writeFileSync(sessionIdHashFile, currentHash);
+            console.log(chalk.green('Session restored from Base64'));`;
+
+    let patched = false;
+    if (code.includes(orig1)) {
+        code = code.replace(orig1, patched1);
+        patched = true;
+        console.log('[patch-baileys] messages.upsert OSSL error handler patched');
+    } else {
+        console.log('[patch-baileys] OSSL messages handler - pattern not matched');
+    }
+    if (code.includes(orig2)) {
+        code = code.replace(orig2, patched2);
+        patched = true;
+        console.log('[patch-baileys] downloadSessionData OSSL validation patched');
+    } else {
+        console.log('[patch-baileys] OSSL session validation - pattern not matched');
+    }
+    if (patched) {
+        fs.writeFileSync(relayIndexFile, code, 'utf-8');
+    }
+}
+
 console.log('[patch-baileys] Applying Baileys patches...');
 patchSocket();
 patchChats();
@@ -614,4 +705,5 @@ patchConnectionMessage();
 patchOwnerAlwaysAccess();
 patchConnectionMessageReliable();
 patchMenuPhoneNumber();
+patchOsslDecryptError();
 console.log('[patch-baileys] Done.');
