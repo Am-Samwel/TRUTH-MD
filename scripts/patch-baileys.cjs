@@ -195,6 +195,74 @@ function patchRelaySendDiagnostics() {
     }
 }
 
+function findRelayFile(filename) {
+    const xsqlite3Dir = path.join(__dirname, '..', 'node_modules', 'xsqlite3');
+    if (!fs.existsSync(xsqlite3Dir)) return null;
+    function walk(dir, depth) {
+        if (depth > 60) return null;
+        try {
+            const entries = fs.readdirSync(dir);
+            for (const entry of entries) {
+                const full = path.join(dir, entry);
+                if (entry === filename) return full;
+                try {
+                    if (fs.statSync(full).isDirectory()) {
+                        const found = walk(full, depth + 1);
+                        if (found) return found;
+                    }
+                } catch (_) {}
+            }
+        } catch (_) {}
+        return null;
+    }
+    return walk(xsqlite3Dir, 0);
+}
+
+function patchOwnerDisplay() {
+    const setownerFile = findRelayFile('setowner.js');
+    const helpFile = findRelayFile('help.js');
+
+    // Patch setowner.js: change default name from 'Not Set!' to ''
+    if (setownerFile) {
+        let code = fs.readFileSync(setownerFile, 'utf-8');
+        if (code.includes('// [PATCHED] owner default empty')) {
+            console.log('[patch-baileys] setowner.js already patched');
+        } else {
+            const orig = `const DEFAULT_OWNER_NAME = 'Not Set!';`;
+            const patched = `// [PATCHED] owner default empty\nconst DEFAULT_OWNER_NAME = 'Not Set';`;
+            if (code.includes(orig)) {
+                code = code.replace(orig, patched);
+                fs.writeFileSync(setownerFile, code, 'utf-8');
+                console.log('[patch-baileys] setowner.js patched - owner default set to empty');
+            } else {
+                console.log('[patch-baileys] setowner.js - DEFAULT_OWNER_NAME pattern not found');
+            }
+        }
+    } else {
+        console.log('[patch-baileys] setowner.js not found in relay');
+    }
+
+    // Patch help.js: skip Owner line when name is empty
+    if (helpFile) {
+        let code = fs.readFileSync(helpFile, 'utf-8');
+        if (code.includes('// [PATCHED] owner line conditional')) {
+            console.log('[patch-baileys] help.js owner line already patched');
+        } else {
+            const orig = `    menu += \`◆ *Owner:* \${newOwner}\\n\`;`;
+            const patched = `    // [PATCHED] owner line conditional\n    if (newOwner) menu += \`◆ *Owner:* \${newOwner}\\n\`;`;
+            if (code.includes(orig)) {
+                code = code.replace(orig, patched);
+                fs.writeFileSync(helpFile, code, 'utf-8');
+                console.log('[patch-baileys] help.js patched - owner line hidden when empty');
+            } else {
+                console.log('[patch-baileys] help.js - owner menu line pattern not found');
+            }
+        }
+    } else {
+        console.log('[patch-baileys] help.js not found in relay');
+    }
+}
+
 console.log('[patch-baileys] Applying Baileys patches...');
 patchSocket();
 patchChats();
@@ -202,4 +270,5 @@ patchMessagesRecv();
 patchSessionCipher();
 patchSendDiagnostics();
 patchRelaySendDiagnostics();
+patchOwnerDisplay();
 console.log('[patch-baileys] Done.');
