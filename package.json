@@ -12,7 +12,6 @@
   "dependencies": {
     "@adiwajshing/keyed-db": "^0.2.4",
     "@hapi/boom": "^10.0.1",
-    "@replit/connectors-sdk": "^0.2.0",
     "@whiskeysockets/baileys": "6.7.9",
     "adm-zip": "^0.5.16",
     "awesome-phonenumber": "^5.9.0",
@@ -30,7 +29,7 @@
     "fs-extra": "^11.2.0",
     "gtts": "^0.2.1",
     "human-readable": "^0.2.1",
-    "jimp": "^1.6.0",
+    "jimp": "^0.16.1",
     "jsdom": "^22.1.0",
     "libphonenumber-js": "^1.11.18",
     "link-preview-js": "^3.0.5",
