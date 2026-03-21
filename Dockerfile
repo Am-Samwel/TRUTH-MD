@@ -12,7 +12,10 @@ RUN npm install --legacy-peer-deps --ignore-scripts
 # Step 2: Compile better-sqlite3 native binary from source (requires python3/make/g++ above)
 RUN npm install better-sqlite3@12.8.0 --legacy-peer-deps --build-from-source
 
-# Step 3: Remove sharp installed without binary and reinstall it fresh with postinstall
+# Step 3: Compile sqlite3 native binary from source
+  RUN npm install sqlite3@5.1.7 --legacy-peer-deps --build-from-source
+
+  # Step 4: Remove sharp installed without binary and reinstall it fresh with postinstall
 RUN rm -rf node_modules/sharp && \
     npm install --platform=linux --arch=x64 sharp@0.32.6 --legacy-peer-deps
 
