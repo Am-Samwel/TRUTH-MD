@@ -1,0 +1,10 @@
+node_modules/
+.env
+replit.md
+.local/
+.cache/
+attached_assets/
+*.session
+lib/
+tmp/
+sessions/
