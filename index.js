@@ -2588,6 +2588,29 @@ function checkEnvStatus() {
 async function tylor() {
     global._startupTimestamp = Date.now();
 
+    // ── Baileys async-fallback (early load) ──────────────────────────────────
+    // MUST run first — fetchLatestBaileysVersion and makeWASocket must be ready
+    // before anything in tylor() uses them (e.g. the version-check Promise.all
+    // at the bottom of this function).  The same block in startXeonBotInc() is
+    // kept as a safety net for reconnects, but this one covers first-boot.
+    if (!makeWASocket || !globalThis.__baileysCached || globalThis.__baileysCached.__isLazyPlaceholder) {
+        try {
+            const _b = await import('@whiskeysockets/baileys');
+            makeWASocket = _b.default;
+            DisconnectReason = _b.DisconnectReason;
+            fetchLatestBaileysVersion = _b.fetchLatestBaileysVersion;
+            jidNormalizedUser = _b.jidNormalizedUser;
+            makeCacheableSignalKeyStore = _b.makeCacheableSignalKeyStore;
+            delay = _b.delay;
+            globalThis.__baileysCached = _b;
+            log('[BAILEYS] ✅ Loaded via dynamic import() — async-ESM runtime detected', 'cyan');
+        } catch (e) {
+            log(`[BAILEYS] ❌ Fatal: cannot load baileys — ${e.message}`, 'red', true);
+            console.error(e.stack);
+            process.exit(1);
+        }
+    }
+
     // 1. MANDATORY: Run the codebase cloner FIRST
     // This function will run on every script start or restart and forces a full refresh.
     // await downloadAndSetupCodebase();
